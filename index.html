@@ -81,6 +81,36 @@
     hr {
       margin: 15px 0;
     }
+
+    /* image preview list */
+    .image-preview-list {
+      margin-top: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      padding: 6px;
+      border-radius: 6px;
+      background: #fafafa;
+      font-size: 0.85rem;
+    }
+    .image-preview-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .image-preview-item:hover {
+      background: #e9f5ff;
+    }
+    .image-preview-item img {
+      width: 48px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+    }
   </style>
 </head>
 <body>
@@ -113,7 +143,12 @@
         <option value="">— اختر صورة —</option>
       </select>
 
-      <label>الموقع بالنسبة الفقرة المختار:</label>
+      <!-- thumbnails here -->
+      <div id="image-preview-list" class="image-preview-list">
+        لا توجد صور مرفوعة بعد.
+      </div>
+
+      <label>الموقع بالنسبة للفقرة المختار:</label>
       <select id="position-select">
         <option value="after">بعد الفقرة</option>
         <option value="before">قبل الفقرة</option>
@@ -152,11 +187,7 @@
   </main>
 
   <script>
-    // أثناء التطوير المحلي:
-    // const API_BASE = "http://localhost:8000";
-    //
-    // بعد نشر الباك إند (Railway / Render)، غيّر هذا إلى:
-    // const API_BASE = "https://your-backend-domain.up.railway.app";
+    // set this to your Railway backend URL
     const API_BASE = "https://docx-image-inserter-production.up.railway.app";
 
     let sessionId = null;
@@ -164,6 +195,7 @@
     let images = [];
     let selectedParaId = null;
     let placements = []; // {image_id, para_id, position}
+    let imagePreviewUrls = {}; // filename -> object URL
 
     const docxInput = document.getElementById("docx-input");
     const imagesInput = document.getElementById("images-input");
@@ -176,9 +208,63 @@
     const downloadBtn = document.getElementById("download-btn");
     const aiInstructions = document.getElementById("ai-instructions");
     const aiSuggestBtn = document.getElementById("ai-suggest-btn");
+    const imagePreviewList = document.getElementById("image-preview-list");
 
-    // ===== رفع الملف والصور =====
+    // ===== helper: render placements =====
+    function renderPlacements() {
+      placementsList.innerHTML = "";
+      placements.forEach((pl, index) => {
+        const para = paragraphs.find((p) => p.id === pl.para_id);
+        const img = images.find((i) => i.id === pl.image_id);
+        const li = document.createElement("li");
+        li.textContent =
+          `#${index + 1} الصورة "${img?.filename || ""}" ` +
+          (pl.position === "after" ? "بعد" : "قبل") +
+          ` الفقرة: "` +
+          ((para?.text || "").substring(0, 40)) +
+          '..."';
+        placementsList.appendChild(li);
+      });
+    }
 
+    // ===== helper: render image thumbnails =====
+    function renderImagePreviews() {
+      imagePreviewList.innerHTML = "";
+
+      if (!images.length) {
+        const p = document.createElement("p");
+        p.textContent = "لا توجد صور مرفوعة بعد.";
+        imagePreviewList.appendChild(p);
+        return;
+      }
+
+      images.forEach((img) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "image-preview-item";
+
+        const thumb = document.createElement("img");
+        const url = imagePreviewUrls[img.filename];
+        if (url) thumb.src = url;
+        thumb.alt = img.filename;
+
+        const label = document.createElement("span");
+        label.textContent = img.filename;
+
+        wrapper.appendChild(thumb);
+        wrapper.appendChild(label);
+
+        wrapper.onclick = () => {
+          imageSelect.value = img.id;
+          if (selectedParaId) {
+            addPlacementBtn.disabled = false;
+          }
+        };
+
+        imagePreviewList.appendChild(wrapper);
+      });
+    }
+
+    // ===== upload docx + images =====
     uploadBtn.onclick = async () => {
       const docxFile = docxInput.files[0];
       if (!docxFile) {
@@ -188,8 +274,11 @@
 
       const formData = new FormData();
       formData.append("docx_file", docxFile);
+
+      imagePreviewUrls = {};
       for (const img of imagesInput.files) {
         formData.append("images", img);
+        imagePreviewUrls[img.name] = URL.createObjectURL(img);
       }
 
       uploadBtn.disabled = true;
@@ -213,10 +302,10 @@
         images = data.images || [];
         placements = [];
 
-        // عرض HTML في المعاينة
+        // preview HTML
         docPreview.innerHTML = data.html_preview || "<p>لا يوجد محتوى.</p>";
 
-        // جعل الفقرات قابلة للضغط
+        // clickable paragraphs
         Array.from(docPreview.querySelectorAll("p")).forEach((p) => {
           p.addEventListener("click", () => {
             Array.from(docPreview.querySelectorAll("p")).forEach((el) =>
@@ -224,11 +313,13 @@
             );
             p.classList.add("selected");
             selectedParaId = p.getAttribute("data-para-id");
-            addPlacementBtn.disabled = false;
+            if (imageSelect.value) {
+              addPlacementBtn.disabled = false;
+            }
           });
         });
 
-        // تعبئة قائمة الصور
+        // fill image select
         imageSelect.innerHTML = '<option value="">— اختر صورة —</option>';
         images.forEach((img) => {
           const opt = document.createElement("option");
@@ -238,6 +329,7 @@
         });
 
         renderPlacements();
+        renderImagePreviews();
         downloadBtn.disabled = true;
         aiSuggestBtn.disabled = false;
 
@@ -251,26 +343,7 @@
       }
     };
 
-    // ===== عرض قائمة الأماكن المختارة =====
-
-    function renderPlacements() {
-      placementsList.innerHTML = "";
-      placements.forEach((pl, index) => {
-        const para = paragraphs.find((p) => p.id === pl.para_id);
-        const img = images.find((i) => i.id === pl.image_id);
-        const li = document.createElement("li");
-        li.textContent =
-          `#${index + 1} الصورة "${img?.filename || ""}" ` +
-          (pl.position === "after" ? "بعد" : "قبل") +
-          ` الفقرة: "` +
-          ((para?.text || "").substring(0, 40)) +
-          '..."';
-        placementsList.appendChild(li);
-      });
-    }
-
-    // ===== إضافة مكان (يدوي) =====
-
+    // ===== manual placement =====
     addPlacementBtn.onclick = () => {
       if (!sessionId) {
         alert("رجاءً ارفع الملف أولاً.");
@@ -296,8 +369,7 @@
       downloadBtn.disabled = placements.length === 0;
     };
 
-    // ===== طلب اقتراح من الذكاء الاصطناعي =====
-
+    // ===== AI suggestions =====
     aiSuggestBtn.onclick = async () => {
       if (!sessionId) {
         alert("رجاءً ارفع الملف أولاً.");
@@ -337,7 +409,6 @@
           return;
         }
 
-        // لكل اقتراح، نطلب اختيار صورة بسيطة باستخدام prompt
         for (const pl of aiPlacements) {
           const para = paragraphs.find((p) => p.id === pl.para_id);
           const sampleText = (para?.text || "").substring(0, 80);
@@ -382,8 +453,7 @@
       }
     };
 
-    // ===== تحميل ملف وورد النهائي =====
-
+    // ===== download final docx =====
     downloadBtn.onclick = async () => {
       if (!sessionId || placements.length === 0) {
         alert("لا توجد أماكن للصور بعد.");
