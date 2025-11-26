@@ -103,9 +103,9 @@
 
       <h3>٢) اختيار الصورة ومكانها يدويًا</h3>
       <p style="font-size: 0.9rem;">
-        ١) اضغط على السطر المطلوب في المعاينة على اليمين<br/>
+        ١) اضغط على الفقرة المطلوب في المعاينة على اليمين<br/>
         ٢) اختر الصورة<br/>
-        ٣) اختر قبل/بعد السطر ثم اضغط "إضافة".
+        ٣) اختر قبل/بعد الفقرة ثم اضغط "إضافة".
       </p>
 
       <label>اختر الصورة:</label>
@@ -113,13 +113,13 @@
         <option value="">— اختر صورة —</option>
       </select>
 
-      <label>الموقع بالنسبة للسطر المختار:</label>
+      <label>الموقع بالنسبة الفقرة المختار:</label>
       <select id="position-select">
-        <option value="after">بعد السطر</option>
-        <option value="before">قبل السطر</option>
+        <option value="after">بعد الفقرة</option>
+        <option value="before">قبل الفقرة</option>
       </select>
 
-      <button id="add-placement-btn" disabled>إضافة صورة لهذا السطر</button>
+      <button id="add-placement-btn" disabled>إضافة صورة لهذا الفقرة</button>
 
       <h4>الأماكن المختارة:</h4>
       <ul id="placements-list" class="placements-list"></ul>
@@ -143,7 +143,7 @@
     <section id="preview-panel" class="panel">
       <h3>معاينة الملف</h3>
       <p style="font-size: 0.9rem; margin-top:0;">
-        اضغط على أي سطر لتحديده، ثم استخدم القائمة في اليسار لوضع الصور.
+        اضغط على أي فقرة لتحديده، ثم استخدم القائمة في اليسار لوضع الصور.
       </p>
       <div id="doc-preview">
         <p>لم يتم رفع أي ملف بعد.</p>
@@ -241,7 +241,7 @@
         downloadBtn.disabled = true;
         aiSuggestBtn.disabled = false;
 
-        alert("تم رفع الملف بنجاح. الآن اضغط على السطر واختر الصورة.");
+        alert("تم رفع الملف بنجاح. الآن اضغط على الفقرة واختر الصورة.");
       } catch (err) {
         console.error(err);
         alert("حدث خطأ أثناء الرفع.");
@@ -262,7 +262,7 @@
         li.textContent =
           `#${index + 1} الصورة "${img?.filename || ""}" ` +
           (pl.position === "after" ? "بعد" : "قبل") +
-          ` السطر: "` +
+          ` الفقرة: "` +
           ((para?.text || "").substring(0, 40)) +
           '..."';
         placementsList.appendChild(li);
@@ -277,7 +277,7 @@
         return;
       }
       if (!selectedParaId) {
-        alert("رجاءً اضغط على سطر في المعاينة أولاً.");
+        alert("رجاءً اضغط على فقرة في المعاينة أولاً.");
         return;
       }
       const imgId = imageSelect.value;
@@ -350,7 +350,7 @@
 
           const choice = prompt(
             `الذكاء الاصطناعي يقترح:\n` +
-            `${label} ${pl.position === "before" ? "قبل" : "بعد"} السطر:\n` +
+            `${label} ${pl.position === "before" ? "قبل" : "بعد"} الفقرة:\n` +
             `"${sampleText}..."\n\n` +
             `اختر رقم الصورة من القائمة التالية:\n` +
             images.map((img, idx) => `${idx + 1}) ${img.filename}`).join("\n")
