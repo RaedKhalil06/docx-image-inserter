@@ -1,10 +1,436 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>DOCX Image Inserter</title>
+  <meta charset="UTF-8" />
+  <title>إدراج الصور في ملف وورد</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+    }
+    header {
+      background: #2c3e50;
+      color: #fff;
+      padding: 10px 20px;
+    }
+    main {
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .panel {
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-sizing: border-box;
+    }
+    #upload-panel {
+      width: 32%;
+      min-width: 260px;
+    }
+    #preview-panel {
+      width: 68%;
+      max-height: 80vh;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+    }
+    #doc-preview p {
+      padding: 5px;
+      margin: 4px 0;
+      cursor: pointer;
+    }
+    #doc-preview p:hover {
+      background: #e9f5ff;
+    }
+    #doc-preview p.selected {
+      background: #d0ebff;
+      border-right: 4px solid #2980b9;
+    }
+    .placements-list {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      padding-left: 18px;
+      direction: rtl;
+    }
+    .placements-list li {
+      margin-bottom: 4px;
+    }
+    button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      background: #2980b9;
+      color: #fff;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    input, select, textarea {
+      width: 100%;
+      margin: 5px 0 10px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+    hr {
+      margin: 15px 0;
+    }
+  </style>
 </head>
 <body>
+  <header>
+    <h2>موقع إدراج الصور في ملفات وورد</h2>
+  </header>
+
+  <main>
+    <section id="upload-panel" class="panel">
+      <h3>١) رفع الملف والصور</h3>
+      <label>ملف وورد (.docx):</label>
+      <input type="file" id="docx-input" accept=".docx" />
+
+      <label>الصور (يمكن اختيار أكثر من صورة):</label>
+      <input type="file" id="images-input" accept="image/*" multiple />
+
+      <button id="upload-btn">رفع الملف</button>
+
+      <hr />
+
+      <h3>٢) اختيار الصورة ومكانها يدويًا</h3>
+      <p style="font-size: 0.9rem;">
+        ١) اضغط على السطر المطلوب في المعاينة على اليمين<br/>
+        ٢) اختر الصورة<br/>
+        ٣) اختر قبل/بعد السطر ثم اضغط "إضافة".
+      </p>
+
+      <label>اختر الصورة:</label>
+      <select id="image-select">
+        <option value="">— اختر صورة —</option>
+      </select>
+
+      <label>الموقع بالنسبة للسطر المختار:</label>
+      <select id="position-select">
+        <option value="after">بعد السطر</option>
+        <option value="before">قبل السطر</option>
+      </select>
+
+      <button id="add-placement-btn" disabled>إضافة صورة لهذا السطر</button>
+
+      <h4>الأماكن المختارة:</h4>
+      <ul id="placements-list" class="placements-list"></ul>
+
+      <hr />
+
+      <h3>٣) استخدام الذكاء الاصطناعي (اختياري)</h3>
+      <p style="font-size: 0.9rem;">
+        اكتب التعليمات بالكلام العادي، مثل:<br/>
+        "ضع شعار الشركة أعلى الصفحة الأولى، وضع الرسم البياني تحت فقرة مبيعات الربع الأول".
+      </p>
+      <textarea id="ai-instructions" rows="4" placeholder="اكتب تعليماتك هنا..."></textarea>
+      <button id="ai-suggest-btn" disabled>اقترح أماكن باستخدام الذكاء الاصطناعي</button>
+
+      <hr />
+
+      <h3>٤) تحميل الملف النهائي</h3>
+      <button id="download-btn" disabled>تحميل ملف وورد النهائي</button>
+    </section>
+
+    <section id="preview-panel" class="panel">
+      <h3>معاينة الملف</h3>
+      <p style="font-size: 0.9rem; margin-top:0;">
+        اضغط على أي سطر لتحديده، ثم استخدم القائمة في اليسار لوضع الصور.
+      </p>
+      <div id="doc-preview">
+        <p>لم يتم رفع أي ملف بعد.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // أثناء التطوير المحلي:
+    // const API_BASE = "http://localhost:8000";
+    //
+    // بعد نشر الباك إند (Railway / Render)، غيّر هذا إلى:
+    // const API_BASE = "https://your-backend-domain.up.railway.app";
+    const API_BASE = "http://localhost:8000";
+
+    let sessionId = null;
+    let paragraphs = [];
+    let images = [];
+    let selectedParaId = null;
+    let placements = []; // {image_id, para_id, position}
+
+    const docxInput = document.getElementById("docx-input");
+    const imagesInput = document.getElementById("images-input");
+    const uploadBtn = document.getElementById("upload-btn");
+    const docPreview = document.getElementById("doc-preview");
+    const imageSelect = document.getElementById("image-select");
+    const positionSelect = document.getElementById("position-select");
+    const addPlacementBtn = document.getElementById("add-placement-btn");
+    const placementsList = document.getElementById("placements-list");
+    const downloadBtn = document.getElementById("download-btn");
+    const aiInstructions = document.getElementById("ai-instructions");
+    const aiSuggestBtn = document.getElementById("ai-suggest-btn");
+
+    // ===== رفع الملف والصور =====
+
+    uploadBtn.onclick = async () => {
+      const docxFile = docxInput.files[0];
+      if (!docxFile) {
+        alert("رجاءً اختر ملف وورد أولاً.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("docx_file", docxFile);
+      for (const img of imagesInput.files) {
+        formData.append("images", img);
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = "جاري الرفع...";
+
+      try {
+        const res = await fetch(`${API_BASE}/api/session/create`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          console.error(data);
+          alert("حدث خطأ أثناء الرفع.");
+          return;
+        }
+
+        sessionId = data.session_id;
+        paragraphs = data.paragraphs || [];
+        images = data.images || [];
+        placements = [];
+
+        // عرض HTML في المعاينة
+        docPreview.innerHTML = data.html_preview || "<p>لا يوجد محتوى.</p>";
+
+        // جعل الفقرات قابلة للضغط
+        Array.from(docPreview.querySelectorAll("p")).forEach((p) => {
+          p.addEventListener("click", () => {
+            Array.from(docPreview.querySelectorAll("p")).forEach((el) =>
+              el.classList.remove("selected")
+            );
+            p.classList.add("selected");
+            selectedParaId = p.getAttribute("data-para-id");
+            addPlacementBtn.disabled = false;
+          });
+        });
+
+        // تعبئة قائمة الصور
+        imageSelect.innerHTML = '<option value="">— اختر صورة —</option>';
+        images.forEach((img) => {
+          const opt = document.createElement("option");
+          opt.value = img.id;
+          opt.textContent = img.filename;
+          imageSelect.appendChild(opt);
+        });
+
+        renderPlacements();
+        downloadBtn.disabled = true;
+        aiSuggestBtn.disabled = false;
+
+        alert("تم رفع الملف بنجاح. الآن اضغط على السطر واختر الصورة.");
+      } catch (err) {
+        console.error(err);
+        alert("حدث خطأ أثناء الرفع.");
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = "رفع الملف";
+      }
+    };
+
+    // ===== عرض قائمة الأماكن المختارة =====
+
+    function renderPlacements() {
+      placementsList.innerHTML = "";
+      placements.forEach((pl, index) => {
+        const para = paragraphs.find((p) => p.id === pl.para_id);
+        const img = images.find((i) => i.id === pl.image_id);
+        const li = document.createElement("li");
+        li.textContent =
+          `#${index + 1} الصورة "${img?.filename || ""}" ` +
+          (pl.position === "after" ? "بعد" : "قبل") +
+          ` السطر: "` +
+          ((para?.text || "").substring(0, 40)) +
+          '..."';
+        placementsList.appendChild(li);
+      });
+    }
+
+    // ===== إضافة مكان (يدوي) =====
+
+    addPlacementBtn.onclick = () => {
+      if (!sessionId) {
+        alert("رجاءً ارفع الملف أولاً.");
+        return;
+      }
+      if (!selectedParaId) {
+        alert("رجاءً اضغط على سطر في المعاينة أولاً.");
+        return;
+      }
+      const imgId = imageSelect.value;
+      if (!imgId) {
+        alert("رجاءً اختر صورة.");
+        return;
+      }
+      const position = positionSelect.value;
+
+      placements.push({
+        image_id: imgId,
+        para_id: selectedParaId,
+        position: position,
+      });
+      renderPlacements();
+      downloadBtn.disabled = placements.length === 0;
+    };
+
+    // ===== طلب اقتراح من الذكاء الاصطناعي =====
+
+    aiSuggestBtn.onclick = async () => {
+      if (!sessionId) {
+        alert("رجاءً ارفع الملف أولاً.");
+        return;
+      }
+      const text = aiInstructions.value.trim();
+      if (!text) {
+        alert("اكتب بعض التعليمات أولاً.");
+        return;
+      }
+
+      aiSuggestBtn.disabled = true;
+      aiSuggestBtn.textContent = "جاري طلب الاقتراح...";
+
+      try {
+        const res = await fetch(`${API_BASE}/api/session/suggest-placements`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            instructions: text,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          console.error(data);
+          alert("حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.");
+          return;
+        }
+
+        const aiPlacements = data.ai_placements || [];
+        if (aiPlacements.length === 0) {
+          alert("لم يتم العثور على اقتراحات.");
+          return;
+        }
+
+        // لكل اقتراح، نطلب اختيار صورة بسيطة باستخدام prompt
+        for (const pl of aiPlacements) {
+          const para = paragraphs.find((p) => p.id === pl.para_id);
+          const sampleText = (para?.text || "").substring(0, 80);
+          const label = pl.image_label || "الصورة";
+
+          if (images.length === 0) {
+            alert("لا توجد صور مرفوعة لربطها بالاقتراح.");
+            break;
+          }
+
+          const choice = prompt(
+            `الذكاء الاصطناعي يقترح:\n` +
+            `${label} ${pl.position === "before" ? "قبل" : "بعد"} السطر:\n` +
+            `"${sampleText}..."\n\n` +
+            `اختر رقم الصورة من القائمة التالية:\n` +
+            images.map((img, idx) => `${idx + 1}) ${img.filename}`).join("\n")
+          );
+
+          if (!choice) continue;
+          const idx = parseInt(choice, 10) - 1;
+          if (!Number.isInteger(idx) || idx < 0 || idx >= images.length) {
+            continue;
+          }
+
+          const imgId = images[idx].id;
+          placements.push({
+            image_id: imgId,
+            para_id: pl.para_id,
+            position: pl.position === "before" ? "before" : "after",
+          });
+        }
+
+        renderPlacements();
+        downloadBtn.disabled = placements.length === 0;
+
+      } catch (err) {
+        console.error(err);
+        alert("حدث خطأ أثناء طلب الاقتراح من الذكاء الاصطناعي.");
+      } finally {
+        aiSuggestBtn.disabled = false;
+        aiSuggestBtn.textContent = "اقترح أماكن باستخدام الذكاء الاصطناعي";
+      }
+    };
+
+    // ===== تحميل ملف وورد النهائي =====
+
+    downloadBtn.onclick = async () => {
+      if (!sessionId || placements.length === 0) {
+        alert("لا توجد أماكن للصور بعد.");
+        return;
+      }
+
+      const body = {
+        session_id: sessionId,
+        placements: placements,
+      };
+
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = "جاري إنشاء الملف...";
+
+      try {
+        const res = await fetch(`${API_BASE}/api/session/apply`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          console.error(err);
+          alert("حدث خطأ أثناء إنشاء الملف.");
+          return;
+        }
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "modified.docx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error(err);
+        alert("حدث خطأ أثناء تحميل الملف.");
+      } finally {
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = "تحميل ملف وورد النهائي";
+      }
+    };
+  </script>
 </body>
 </html>
-
