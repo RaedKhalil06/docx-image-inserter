@@ -111,6 +111,12 @@
       border-radius: 4px;
       border: 1px solid #ddd;
     }
+
+    .actions-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
   </style>
 </head>
 <body>
@@ -133,9 +139,9 @@
 
       <h3>٢) اختيار الصورة ومكانها يدويًا</h3>
       <p style="font-size: 0.9rem;">
-        ١) اضغط على الفقرة المطلوب في المعاينة على اليمين<br/>
+        ١) اضغط على السطر المطلوب في المعاينة على اليمين<br/>
         ٢) اختر الصورة<br/>
-        ٣) اختر قبل/بعد الفقرة ثم اضغط "إضافة".
+        ٣) اختر قبل/بعد السطر ثم اضغط "إضافة".
       </p>
 
       <label>اختر الصورة:</label>
@@ -148,13 +154,16 @@
         لا توجد صور مرفوعة بعد.
       </div>
 
-      <label>الموقع بالنسبة للفقرة المختار:</label>
+      <label>الموقع بالنسبة للسطر المختار:</label>
       <select id="position-select">
-        <option value="after">بعد الفقرة</option>
-        <option value="before">قبل الفقرة</option>
+        <option value="after">بعد السطر</option>
+        <option value="before">قبل السطر</option>
       </select>
 
-      <button id="add-placement-btn" disabled>إضافة صورة لهذا الفقرة</button>
+      <div class="actions-row">
+        <button id="add-placement-btn" disabled>إضافة صورة لهذا السطر</button>
+        <button id="undo-btn" disabled>تراجع عن آخر إضافة</button>
+      </div>
 
       <h4>الأماكن المختارة:</h4>
       <ul id="placements-list" class="placements-list"></ul>
@@ -178,7 +187,7 @@
     <section id="preview-panel" class="panel">
       <h3>معاينة الملف</h3>
       <p style="font-size: 0.9rem; margin-top:0;">
-        اضغط على أي فقرة لتحديده، ثم استخدم القائمة في اليسار لوضع الصور.
+        اضغط على أي سطر لتحديده، ثم استخدم القائمة في اليسار لوضع الصور.
       </p>
       <div id="doc-preview">
         <p>لم يتم رفع أي ملف بعد.</p>
@@ -187,7 +196,7 @@
   </main>
 
   <script>
-    // set this to your Railway backend URL
+    // Backend URL (Railway)
     const API_BASE = "https://docx-image-inserter-production.up.railway.app";
 
     let sessionId = null;
@@ -204,13 +213,14 @@
     const imageSelect = document.getElementById("image-select");
     const positionSelect = document.getElementById("position-select");
     const addPlacementBtn = document.getElementById("add-placement-btn");
+    const undoBtn = document.getElementById("undo-btn");
     const placementsList = document.getElementById("placements-list");
     const downloadBtn = document.getElementById("download-btn");
     const aiInstructions = document.getElementById("ai-instructions");
     const aiSuggestBtn = document.getElementById("ai-suggest-btn");
     const imagePreviewList = document.getElementById("image-preview-list");
 
-    // ===== helper: render placements =====
+    // ===== helper: render placements + enable/disable buttons =====
     function renderPlacements() {
       placementsList.innerHTML = "";
       placements.forEach((pl, index) => {
@@ -220,11 +230,15 @@
         li.textContent =
           `#${index + 1} الصورة "${img?.filename || ""}" ` +
           (pl.position === "after" ? "بعد" : "قبل") +
-          ` الفقرة: "` +
+          ` السطر: "` +
           ((para?.text || "").substring(0, 40)) +
           '..."';
         placementsList.appendChild(li);
       });
+
+      // enable/disable undo + download
+      undoBtn.disabled = placements.length === 0;
+      downloadBtn.disabled = placements.length === 0;
     }
 
     // ===== helper: render image thumbnails =====
@@ -330,10 +344,9 @@
 
         renderPlacements();
         renderImagePreviews();
-        downloadBtn.disabled = true;
         aiSuggestBtn.disabled = false;
 
-        alert("تم رفع الملف بنجاح. الآن اضغط على الفقرة واختر الصورة.");
+        alert("تم رفع الملف بنجاح. الآن اضغط على السطر واختر الصورة.");
       } catch (err) {
         console.error(err);
         alert("حدث خطأ أثناء الرفع.");
@@ -350,7 +363,7 @@
         return;
       }
       if (!selectedParaId) {
-        alert("رجاءً اضغط على فقرة في المعاينة أولاً.");
+        alert("رجاءً اضغط على سطر في المعاينة أولاً.");
         return;
       }
       const imgId = imageSelect.value;
@@ -366,7 +379,13 @@
         position: position,
       });
       renderPlacements();
-      downloadBtn.disabled = placements.length === 0;
+    };
+
+    // ===== undo last placement =====
+    undoBtn.onclick = () => {
+      if (!placements.length) return;
+      placements.pop();
+      renderPlacements();
     };
 
     // ===== AI suggestions =====
@@ -421,7 +440,7 @@
 
           const choice = prompt(
             `الذكاء الاصطناعي يقترح:\n` +
-            `${label} ${pl.position === "before" ? "قبل" : "بعد"} الفقرة:\n` +
+            `${label} ${pl.position === "before" ? "قبل" : "بعد"} السطر:\n` +
             `"${sampleText}..."\n\n` +
             `اختر رقم الصورة من القائمة التالية:\n` +
             images.map((img, idx) => `${idx + 1}) ${img.filename}`).join("\n")
@@ -442,8 +461,6 @@
         }
 
         renderPlacements();
-        downloadBtn.disabled = placements.length === 0;
-
       } catch (err) {
         console.error(err);
         alert("حدث خطأ أثناء طلب الاقتراح من الذكاء الاصطناعي.");
